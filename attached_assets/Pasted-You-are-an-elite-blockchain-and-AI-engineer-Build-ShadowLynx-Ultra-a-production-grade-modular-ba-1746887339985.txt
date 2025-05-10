@@ -1,0 +1,58 @@
+You are an elite blockchain and AI engineer. Build ‘ShadowLynx Ultra’—a production-grade, modular backend and infrastructure system on Replit that executes flashloan-powered arbitrage across 10 DEXs on BSC and Polygon, with AI prediction, mempool intelligence, and dominance-level add-ons. Exclude smart contract development (already done), but integrate via Web3 hooks.**
+>
+> #### **1. Flash Loan Orchestration**
+>
+> * Implement a **Flashloan Engine** module that interfaces with dodoex,Aave v3, DyDx, and Uniswap V3 Flash Swaps for zero-collateral borrowing.
+> * Ensure atomic execution: borrow → multi-DEX swaps → repay → profit.
+>
+> #### **2. DEX Price Aggregator**
+>
+> * Fetch and normalize real-time token prices from **10 DEXs** on BSC and Polygon (e.g., PancakeSwap, 1inch, SushiSwap, Curve, Balancer, KyberSwap, ApeSwap, DODO, WaultSwap, QuickSwap).
+> * Use async I/O (`aiohttp`/`asyncio`) with retry and rate-limit handling.
+> * Output unified schema: `{ token_pair, dex_name, price, timestamp }`.
+>
+> #### **3. AI Predictive Arbitrage Engine**
+>
+> * Train using historical/ real-time data and deploy an LSTM/Transformer model that predicts short-term price dislocations and mempool-driven spreads.
+> * Embed model in an async event loop for sub-200 ms reaction times.
+>
+> #### **4. Mempool & MEV Intelligence**
+>
+> * Integrate **Flashbots Protect RPC** to submit bundles, prevent front-running, and secure priority execution.
+> * Build a **Mempool Listener** to detect large pending DEX swaps and trigger sandwich/sniping strategies.
+>
+> #### **5. Real Execution Engine**
+>
+> * Create `execution_engine.py` with `web3.py` (or `ethers.js`) to call the deployed flashloan contract:
+>
+>   ```python
+>   contract.functions.executeFlashloan(tokenA, tokenB, amount, dex1, dex2).transact({ … })
+>   ```
+> * Include gas estimation, dynamic gas price adjustment, and transaction receipt verification.
+>
+> #### **6. Reinvestment & Scaling Module**
+>
+> * Auto-compound profits by feeding net returns back into subsequent flashloan loops.
+> * Manage capital allocation to stay within DEX depth limits (<2 % pool) and maximize parallel loops for \$100 K in 48 hrs.
+>
+> #### **7. Alerting & Monitoring**
+>
+> * Log events (borrow, swap, repay, profit) to JSON logs and a lightweight database.
+> * Send real-time alerts to Telegram/Discord when profit > \$X or failures occur.
+> * Expose FastAPI endpoints: `/status`, `/opportunities`, `/profits`, `/export-csv` for dashboard integration.
+>
+> #### **8. Dominance Add-Ons**
+>
+> 1. **Dark Pool Arbitrage**: Integrate OTC pool data via Hummingbot or proprietary APIs.
+> 2. **Gnosis Safe Control**: Wrap execution in a multi-sig vault for team governance and risk management.
+> 3. **Zero-Knowledge Proof Routing**: Use zk-SNARK techniques to obfuscate trade intent and shield strategies.
+> 4. **Multi-Chain Extension**: Prepare modules to support cross-chain arbitrage (Polygon ↔ BSC) via LayerZero/Stargate bridges.
+>
+> #### **General Requirements**
+>
+> * Organize code into `/core`, `/dexs`, `/ai`, `/contracts`, `/utils`, `/api`, `/logs`.
+> * Include `README.md`, `requirements.txt`, and `.env` for secrets.
+> * Write clear docstrings and inline comments.
+> * Ensure all modules run seamlessly on Replit’s environment.
+>
+> **Begin by scaffolding the entire project structure and producing template files for each module. Then implement them in iterative phases, with testing on BSC/Polygon testnets before mainnet deployment.
