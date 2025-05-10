@@ -98,3 +98,24 @@ class AIModelPerformance(db.Model):
     
     def __repr__(self):
         return f"<AIModelPerformance {self.model_version}: accuracy={self.accuracy}>"
+        
+class AIAnalysis(db.Model):
+    """Model for storing AI agent analysis results"""
+    id = db.Column(db.Integer, primary_key=True)
+    opportunity_id = db.Column(db.Integer, db.ForeignKey('arbitrage_opportunity.id'), nullable=True)
+    analysis_type = db.Column(db.String(50), nullable=False)  # opportunity, market, strategy
+    timestamp = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    content = db.Column(db.JSON, nullable=False)
+    success_probability = db.Column(db.Float, nullable=True)
+    risk_score = db.Column(db.Float, nullable=True)
+    strategy_recommendation = db.Column(db.String(500), nullable=True)
+    profitability_impact = db.Column(db.String(100), nullable=True)
+    tokens_analyzed = db.Column(db.String(255), nullable=True)
+    request_parameters = db.Column(db.JSON, nullable=True)
+    model_used = db.Column(db.String(50), default="gpt-4o")
+    
+    # Define relationship
+    opportunity = db.relationship('ArbitrageOpportunity', backref=db.backref('ai_analyses', lazy=True))
+    
+    def __repr__(self):
+        return f"<AIAnalysis {self.analysis_type} @ {self.timestamp}>"

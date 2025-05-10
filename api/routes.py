@@ -1,14 +1,17 @@
 import os
 import logging
 import json
+import asyncio
 from datetime import datetime, timedelta
-from flask import render_template, jsonify, request, redirect, url_for, send_file
+from flask import render_template, jsonify, request, redirect, url_for, send_file, flash
 import pandas as pd
 import io
 from api.app import app, db
-from models import ArbitrageOpportunity, ArbitrageExecution, TokenPrice, SystemStatus, ProfitSummary
+from models import ArbitrageOpportunity, ArbitrageExecution, TokenPrice, SystemStatus, ProfitSummary, AIAnalysis
+from ai.agent import AIAgent
 
 logger = logging.getLogger(__name__)
+ai_agent = AIAgent()
 
 # Create database tables if not exists (using init_app function)
 def init_db():
@@ -21,6 +24,14 @@ def init_db():
 
 # Initialize database
 init_db()
+
+# Helper function to run async functions
+def run_async(coro):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    result = loop.run_until_complete(coro)
+    loop.close()
+    return result
 
 # Dashboard route
 @app.route('/')
@@ -356,6 +367,206 @@ def api_profits():
             'success': False,
             'error': str(e)
         }), 500
+
+# AI Insights route
+@app.route('/ai-insights')
+def ai_insights():
+    """View AI insights and analyses"""
+    try:
+        # Get recent opportunities for the modal
+        recent_opportunities = ArbitrageOpportunity.query.order_by(
+            ArbitrageOpportunity.created_at.desc()
+        ).limit(20).all()
+        
+        # Get recent opportunity analyses
+        opportunity_analyses = AIAnalysis.query.filter_by(
+            analysis_type='opportunity'
+        ).order_by(AIAnalysis.timestamp.desc()).limit(10).all()
+        
+        # Get recent market analyses
+        market_analyses = AIAnalysis.query.filter_by(
+            analysis_type='market'
+        ).order_by(AIAnalysis.timestamp.desc()).limit(5).all()
+        
+        # Get recent strategy optimizations
+        strategy_analyses = AIAnalysis.query.filter_by(
+            analysis_type='strategy'
+        ).order_by(AIAnalysis.timestamp.desc()).limit(5).all()
+        
+        return render_template('ai_insights.html',
+                             recent_opportunities=recent_opportunities,
+                             opportunity_analyses=opportunity_analyses,
+                             market_analyses=market_analyses,
+                             strategy_analyses=strategy_analyses)
+    
+    except Exception as e:
+        logger.error(f"Error in AI insights route: {str(e)}")
+        return render_template('ai_insights.html',
+                             error=f"Error loading AI insights: {str(e)}",
+                             recent_opportunities=[],
+                             opportunity_analyses=[],
+                             market_analyses=[],
+                             strategy_analyses=[])
+
+@app.route('/analyze-opportunity', methods=['POST'])
+def analyze_opportunity():
+    """Analyze an arbitrage opportunity with AI"""
+    try:
+        opportunity_id = request.form.get('opportunity_id', type=int)
+        
+        if not opportunity_id:
+            return redirect(url_for('ai_insights'))
+        
+        # Get the opportunity
+        opportunity = ArbitrageOpportunity.query.get(opportunity_id)
+        if not opportunity:
+            flash('Opportunity not found', 'error')
+            return redirect(url_for('ai_insights'))
+        
+        # Convert to dict for analysis
+        opportunity_data = {
+            'id': opportunity.id,
+            'token_pair': opportunity.token_pair,
+            'source_dex': opportunity.source_dex,
+            'target_dex': opportunity.target_dex,
+            'source_price': opportunity.source_price,
+            'target_price': opportunity.target_price,
+            'price_difference_percent': opportunity.price_difference_percent,
+            'estimated_profit_usd': opportunity.estimated_profit_usd,
+            'network': opportunity.network,
+            'flash_loan_provider': opportunity.flash_loan_provider,
+            'loan_amount': opportunity.loan_amount,
+            'created_at': opportunity.created_at.isoformat() if opportunity.created_at else None,
+            'ai_confidence': opportunity.ai_confidence
+        }
+        
+        # Run the AI analysis
+        result = run_async(ai_agent.analyze_opportunity(opportunity_data))
+        
+        # Store the analysis result
+        analysis = AIAnalysis(
+            opportunity_id=opportunity.id,
+            analysis_type='opportunity',
+            content=result,
+            success_probability=result.get('success_probability'),
+            risk_score=result.get('risk_score'),
+            strategy_recommendation=result.get('strategy_recommendation'),
+            profitability_impact=result.get('profitability_impact'),
+            request_parameters={'opportunity_id': opportunity_id}
+        )
+        db.session.add(analysis)
+        db.session.commit()
+        
+        # Update the opportunity's AI confidence if provided
+        if 'success_probability' in result:
+            opportunity.ai_confidence = result['success_probability']
+            db.session.commit()
+        
+        flash('AI analysis completed successfully', 'success')
+        return redirect(url_for('ai_insights'))
+    
+    except Exception as e:
+        logger.error(f"Error analyzing opportunity: {str(e)}")
+        flash(f"Error during analysis: {str(e)}", 'error')
+        return redirect(url_for('ai_insights'))
+
+@app.route('/generate-market-insights', methods=['POST'])
+def generate_market_insights():
+    """Generate market insights with AI"""
+    try:
+        token_pairs = request.form.get('token_pairs', '')
+        timeframe = request.form.get('timeframe', '24h')
+        
+        # Parse token pairs
+        tokens = [pair.strip() for pair in token_pairs.split(',') if pair.strip()]
+        
+        if not tokens:
+            flash('Please provide at least one token pair', 'error')
+            return redirect(url_for('ai_insights'))
+        
+        # Run the AI analysis
+        result = run_async(ai_agent.generate_market_insights(tokens, timeframe))
+        
+        # Store the analysis result
+        analysis = AIAnalysis(
+            analysis_type='market',
+            content=result,
+            tokens_analyzed=token_pairs,
+            request_parameters={'token_pairs': tokens, 'timeframe': timeframe}
+        )
+        db.session.add(analysis)
+        db.session.commit()
+        
+        flash('Market insights generated successfully', 'success')
+        return redirect(url_for('ai_insights'))
+    
+    except Exception as e:
+        logger.error(f"Error generating market insights: {str(e)}")
+        flash(f"Error generating insights: {str(e)}", 'error')
+        return redirect(url_for('ai_insights'))
+
+@app.route('/optimize-strategy', methods=['POST'])
+def optimize_strategy():
+    """Optimize trading strategy with AI"""
+    try:
+        timeperiod = request.form.get('timeperiod', '30d')
+        params = request.form.to_dict().get('params', {})
+        
+        # If params is a string (due to form encoding), convert to dict
+        if isinstance(params, str):
+            params = {k: v for k, v in request.form.items() if k.startswith('params[')}
+        
+        # Get historical data
+        end_date = datetime.utcnow()
+        
+        if timeperiod == '7d':
+            start_date = end_date - timedelta(days=7)
+        elif timeperiod == '90d':
+            start_date = end_date - timedelta(days=90)
+        else:  # default to 30d
+            start_date = end_date - timedelta(days=30)
+        
+        # Get execution statistics
+        executions = ArbitrageExecution.query.filter(
+            ArbitrageExecution.executed_at >= start_date
+        ).all()
+        
+        # Prepare historical data
+        historical_data = {
+            'period': timeperiod,
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
+            'total_executions': len(executions),
+            'successful_executions': sum(1 for e in executions if e.status == 'success'),
+            'failed_executions': sum(1 for e in executions if e.status == 'failed'),
+            'total_profit': sum(e.net_profit_usd for e in executions if e.net_profit_usd),
+            'average_profit': sum(e.net_profit_usd for e in executions if e.net_profit_usd) / len([e for e in executions if e.net_profit_usd]) if any(e.net_profit_usd for e in executions) else 0,
+            'average_gas_cost': sum(e.gas_cost_usd for e in executions if e.gas_cost_usd) / len([e for e in executions if e.gas_cost_usd]) if any(e.gas_cost_usd for e in executions) else 0,
+            'networks': {
+                'BSC': sum(1 for e in executions if e.opportunity and e.opportunity.network == 'BSC'),
+                'Polygon': sum(1 for e in executions if e.opportunity and e.opportunity.network == 'Polygon')
+            }
+        }
+        
+        # Run the AI analysis
+        result = run_async(ai_agent.optimize_strategy(historical_data, params))
+        
+        # Store the analysis result
+        analysis = AIAnalysis(
+            analysis_type='strategy',
+            content=result,
+            request_parameters={'timeperiod': timeperiod, 'current_params': params}
+        )
+        db.session.add(analysis)
+        db.session.commit()
+        
+        flash('Strategy optimization completed successfully', 'success')
+        return redirect(url_for('ai_insights'))
+    
+    except Exception as e:
+        logger.error(f"Error optimizing strategy: {str(e)}")
+        flash(f"Error during strategy optimization: {str(e)}", 'error')
+        return redirect(url_for('ai_insights'))
 
 @app.route('/api/export-csv', methods=['GET'])
 def export_csv():

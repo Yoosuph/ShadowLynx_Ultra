@@ -38,6 +38,11 @@
                             <i data-feather="activity" class="feather-nav"></i> System Status
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path == '/ai-insights' %}active{% endif %}" href="/ai-insights">
+                            <i data-feather="cpu" class="feather-nav"></i> AI Insights
+                        </a>
+                    </li>
                 </ul>
                 <div class="ms-auto d-flex align-items-center">
                     <span class="badge bg-success me-2" id="live-status">
@@ -49,6 +54,18 @@
     </nav>
 
     <div class="container-fluid py-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category if category != 'message' else 'info' }} alert-dismissible fade show" role="alert">
+                        <i data-feather="{{ 'check-circle' if category == 'success' else 'alert-triangle' }}" class="feather-sm me-2"></i> 
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
         {% if error %}
         <div class="alert alert-danger alert-dismissible fade show" role="alert">
             <i data-feather="alert-triangle" class="feather-sm me-2"></i> {{ error }}
