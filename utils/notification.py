@@ -1,15 +1,15 @@
 import logging
 import asyncio
-import os
-import json
 import aiohttp
-from typing import Dict, List, Optional, Any, Union
+import json
+import os
+from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
 class NotificationService:
     """
-    Service for sending alerts and notifications via Telegram and Discord
+    Service for sending notifications and alerts through various channels
     """
     
     def __init__(self, telegram_token: Optional[str] = None, 
@@ -20,196 +20,177 @@ class NotificationService:
         
         Args:
             telegram_token: Telegram bot token
-            telegram_chat_id: Telegram chat ID
+            telegram_chat_id: Telegram chat ID for sending messages
             discord_webhook: Discord webhook URL
         """
-        self.telegram_token = telegram_token or os.environ.get("TELEGRAM_BOT_TOKEN")
-        self.telegram_chat_id = telegram_chat_id or os.environ.get("TELEGRAM_CHAT_ID")
-        self.discord_webhook = discord_webhook or os.environ.get("DISCORD_WEBHOOK")
+        self.telegram_token = telegram_token
+        self.telegram_chat_id = telegram_chat_id
+        self.discord_webhook = discord_webhook
         
-        # Track notifications to avoid spamming
-        self.recent_notifications = {}
-        self.notification_cooldown = int(os.environ.get("NOTIFICATION_COOLDOWN_SECONDS", "300"))
+        # Track alert history
+        self.recent_alerts = []
+        self.max_history = 100
         
-        # Initialize notification levels
-        self.notification_levels = {
-            "low": 0,
-            "medium": 1,
-            "high": 2,
-            "critical": 3
-        }
-        
-        self.min_notification_level = os.environ.get("MIN_NOTIFICATION_LEVEL", "medium")
-        
-        logger.info(f"Notification service initialized. Telegram: {'Configured' if self.telegram_token else 'Not configured'}, "
-                   f"Discord: {'Configured' if self.discord_webhook else 'Not configured'}")
-        
-    async def send_alert(self, message: str, priority: str = "medium", 
-                         details: Optional[Dict] = None, deduplicate_key: Optional[str] = None) -> bool:
+    async def send_alert(self, message: str, priority: str = "normal", 
+                         data: Optional[Dict[str, Any]] = None) -> bool:
         """
-        Send alert to configured notification channels
+        Send an alert through configured channels
         
         Args:
             message: Alert message
-            priority: Priority level (low, medium, high, critical)
-            details: Additional details for the message
-            deduplicate_key: Optional key for deduplication
+            priority: Priority level (low, normal, high)
+            data: Optional additional data
             
         Returns:
-            Success status
+            True if alert was sent successfully
         """
-        # Check if message should be sent based on priority
-        if self.notification_levels.get(priority.lower(), 0) < self.notification_levels.get(self.min_notification_level, 0):
-            logger.debug(f"Skipping notification with priority {priority} (below minimum {self.min_notification_level})")
-            return False
-            
-        # Check for deduplication
-        if deduplicate_key:
-            import time
-            current_time = time.time()
-            
-            if deduplicate_key in self.recent_notifications:
-                last_time = self.recent_notifications[deduplicate_key]
-                if current_time - last_time < self.notification_cooldown:
-                    logger.debug(f"Skipping duplicate notification for key: {deduplicate_key}")
-                    return False
-                    
-            self.recent_notifications[deduplicate_key] = current_time
-            
-            # Clean up old entries
-            self.recent_notifications = {k: v for k, v in self.recent_notifications.items()
-                                       if current_time - v < self.notification_cooldown * 2}
-                                       
-        # Format message with priority and details
-        formatted_message = f"[{priority.upper()}] {message}"
+        # Add to history
+        self.recent_alerts.append({
+            "message": message,
+            "priority": priority,
+            "data": data
+        })
         
-        if details:
-            formatted_message += "\n\nDetails:\n" + json.dumps(details, indent=2)
+        # Trim history
+        if len(self.recent_alerts) > self.max_history:
+            self.recent_alerts = self.recent_alerts[-self.max_history:]
             
-        # Send to all configured channels
-        results = await asyncio.gather(
-            self.send_telegram(formatted_message),
-            self.send_discord(formatted_message, priority),
-            return_exceptions=True
-        )
+        # Send through available channels
+        success = False
         
-        # Check results
-        success = any([result is True for result in results if not isinstance(result, Exception)])
-        
-        if not success:
-            logger.warning(f"Failed to send notification to any channel: {message}")
+        # Only send high priority alerts through external channels
+        if priority == "high":
+            # Telegram
+            telegram_success = await self._send_telegram(message, data)
+            
+            # Discord
+            discord_success = await self._send_discord(message, data)
+            
+            success = telegram_success or discord_success
+            
+        # Always log the alert
+        if priority == "high":
+            logger.warning(f"ALERT: {message}")
+        else:
+            logger.info(f"Notification: {message}")
             
         return success
-        
-    async def send_telegram(self, message: str) -> bool:
+    
+    async def _send_telegram(self, message: str, 
+                             data: Optional[Dict[str, Any]] = None) -> bool:
         """
-        Send message via Telegram
+        Send message through Telegram
         
         Args:
-            message: Message to send
+            message: Message text
+            data: Optional additional data
             
         Returns:
-            Success status
+            True if message was sent successfully
         """
         if not self.telegram_token or not self.telegram_chat_id:
             return False
             
         try:
+            # Format message
+            text = message
+            if data:
+                # Add formatted data if present
+                text += "\n\n"
+                text += json.dumps(data, indent=2)
+                
+            # Send message
             async with aiohttp.ClientSession() as session:
                 url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage"
-                payload = {
+                params = {
                     "chat_id": self.telegram_chat_id,
-                    "text": message,
-                    "parse_mode": "HTML"
+                    "text": text,
+                    "parse_mode": "Markdown"
                 }
                 
-                async with session.post(url, json=payload) as response:
+                async with session.post(url, params=params) as response:
                     if response.status == 200:
-                        logger.debug("Telegram notification sent successfully")
                         return True
                     else:
-                        response_text = await response.text()
-                        logger.error(f"Failed to send Telegram notification: {response.status} - {response_text}")
+                        logger.warning(f"Telegram API error: {await response.text()}")
                         return False
                         
         except Exception as e:
-            logger.error(f"Error sending Telegram notification: {str(e)}")
+            logger.error(f"Error sending Telegram message: {str(e)}")
             return False
-            
-    async def send_discord(self, message: str, priority: str = "medium") -> bool:
+    
+    async def _send_discord(self, message: str, 
+                            data: Optional[Dict[str, Any]] = None) -> bool:
         """
-        Send message via Discord webhook
+        Send message through Discord webhook
         
         Args:
-            message: Message to send
-            priority: Priority level for color coding
+            message: Message text
+            data: Optional additional data
             
         Returns:
-            Success status
+            True if message was sent successfully
         """
         if not self.discord_webhook:
             return False
             
         try:
-            # Set color based on priority
-            colors = {
-                "low": 0x00FF00,      # Green
-                "medium": 0xFFFF00,    # Yellow
-                "high": 0xFF9900,      # Orange
-                "critical": 0xFF0000   # Red
+            # Format content
+            content = {
+                "content": message,
+                "username": "ShadowLynx Arbitrage",
+                "embeds": []
             }
-            color = colors.get(priority.lower(), 0xFFFF00)
             
-            async with aiohttp.ClientSession() as session:
-                payload = {
-                    "embeds": [{
-                        "title": "ShadowLynx Ultra Alert",
-                        "description": message,
-                        "color": color,
-                        "timestamp": datetime.datetime.utcnow().isoformat()
-                    }]
+            if data:
+                # Add data as embed
+                embed = {
+                    "title": "Alert Details",
+                    "color": 15258703,  # Red color
+                    "fields": []
                 }
                 
-                async with session.post(self.discord_webhook, json=payload) as response:
+                for key, value in data.items():
+                    field = {
+                        "name": key,
+                        "value": str(value),
+                        "inline": True
+                    }
+                    embed["fields"].append(field)
+                    
+                content["embeds"].append(embed)
+                
+            # Send message
+            async with aiohttp.ClientSession() as session:
+                async with session.post(self.discord_webhook, json=content) as response:
                     if response.status == 204:
-                        logger.debug("Discord notification sent successfully")
                         return True
                     else:
-                        response_text = await response.text()
-                        logger.error(f"Failed to send Discord notification: {response.status} - {response_text}")
+                        logger.warning(f"Discord API error: {await response.text()}")
                         return False
                         
         except Exception as e:
-            logger.error(f"Error sending Discord notification: {str(e)}")
+            logger.error(f"Error sending Discord message: {str(e)}")
             return False
             
-    async def send_summary(self, title: str, data: Dict, priority: str = "low") -> bool:
+    def get_recent_alerts(self, limit: int = 10, 
+                          min_priority: str = "normal") -> list:
         """
-        Send a structured summary message
+        Get recent alerts from history
         
         Args:
-            title: Summary title
-            data: Dictionary of data to include in summary
-            priority: Priority level
+            limit: Maximum number of alerts to return
+            min_priority: Minimum priority level
             
         Returns:
-            Success status
+            List of recent alerts
         """
-        # Format summary message
-        message = f"<b>{title}</b>\n\n"
+        priority_levels = {"low": 0, "normal": 1, "high": 2}
+        min_level = priority_levels.get(min_priority, 0)
         
-        for key, value in data.items():
-            # Format key with snake_case to title Case
-            formatted_key = " ".join(word.capitalize() for word in key.split('_'))
-            
-            # Format value based on type
-            if isinstance(value, float):
-                formatted_value = f"{value:.4f}"
-            elif isinstance(value, dict):
-                formatted_value = json.dumps(value, indent=2)
-            else:
-                formatted_value = str(value)
-                
-            message += f"<b>{formatted_key}:</b> {formatted_value}\n"
-            
-        return await self.send_alert(message, priority=priority)
+        filtered_alerts = [
+            alert for alert in self.recent_alerts
+            if priority_levels.get(alert["priority"], 0) >= min_level
+        ]
+        
+        return filtered_alerts[-limit:]

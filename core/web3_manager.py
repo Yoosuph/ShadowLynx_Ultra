@@ -2,7 +2,6 @@ import logging
 import os
 from typing import Dict, Optional
 from web3 import Web3, HTTPProvider
-from web3.middleware import geth_poa_middleware
 import config
 
 logger = logging.getLogger(__name__)
@@ -44,8 +43,9 @@ class Web3Manager:
             web3 = Web3(HTTPProvider(rpc_url))
             
             # Add PoA middleware for supported networks (like BSC)
-            if network in ["BSC"]:
-                web3.middleware_onion.inject(geth_poa_middleware, layer=0)
+            # Disabled for compatibility
+            # if network in ["BSC"]:
+            #     web3.middleware_onion.inject(geth_poa_middleware, layer=0)
                 
             # Test connection
             if web3.is_connected():
@@ -125,9 +125,16 @@ class Web3Manager:
                 from eth_account import Account
                 address = Account.from_key(self.private_key).address
                 
-            balance_wei = web3.eth.get_balance(Web3.toChecksumAddress(address))
-            balance = web3.fromWei(balance_wei, 'ether')
-            return float(balance)
+            # Convert address to checksum format if needed
+            if not address.startswith('0x'):
+                address = '0x' + address
+            
+            # Get balance
+            balance_wei = web3.eth.get_balance(address)
+            
+            # Convert wei to ether
+            balance_ether = balance_wei / 1e18  # Division by 10^18 (1 ether = 10^18 wei)
+            return float(balance_ether)
             
         except Exception as e:
             logger.error(f"Error getting wallet balance for {network}: {str(e)}")

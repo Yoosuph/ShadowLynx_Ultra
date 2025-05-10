@@ -1,1 +1,1 @@
-# Utils module package initialization
+# Utils package init

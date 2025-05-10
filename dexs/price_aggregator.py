@@ -205,11 +205,23 @@ class PriceAggregator:
         """
         # Return cached data if recent enough
         current_time = time.time() * 1000  # Convert to ms
-        if current_time - self.last_update < self.update_interval * 2:
+        if current_time - self.last_update < self.update_interval * 2 and self.price_cache:
             return list(self.price_cache.values())
             
         # Otherwise, trigger an update and then return
         await self.update_prices()
+        
+        # If cache is still empty, fetch prices directly
+        if not self.price_cache:
+            all_prices = []
+            for token_pair in self.token_list:
+                try:
+                    prices = await dex_manager.get_all_prices(token_pair)
+                    all_prices.extend(prices)
+                except Exception as e:
+                    logger.error(f"Error fetching prices for {token_pair}: {str(e)}")
+            return all_prices
+            
         return list(self.price_cache.values())
         
     async def get_price_for_token_pair(self, token_pair: str, dex_name: str = None, 
@@ -225,16 +237,51 @@ class PriceAggregator:
         Returns:
             List of price data dictionaries matching the criteria
         """
-        all_prices = await self.get_latest_prices()
+        # If we have specific filters, try to get the data directly
+        if dex_name and network:
+            try:
+                result = await dex_manager.get_price(token_pair, dex_name, network)
+                if result:
+                    # Ensure timestamp is present
+                    if 'timestamp' not in result:
+                        result['timestamp'] = time.time()
+                    return [result]
+            except Exception as e:
+                logger.warning(f"Error getting direct price for {token_pair} on {dex_name} ({network}): {str(e)}")
+                # Fall back to cached data
         
-        # Filter by token pair
-        results = [p for p in all_prices if p['token_pair'] == token_pair]
-        
-        # Apply additional filters if provided
-        if dex_name:
-            results = [p for p in results if p['dex_name'] == dex_name]
-            
-        if network:
-            results = [p for p in results if p['network'] == network]
-            
-        return results
+        # Otherwise, get all prices and filter
+        if dex_name or network or not self.price_cache:
+            try:
+                if network and not dex_name:
+                    # Get all prices for this token pair on the specified network
+                    all_prices = []
+                    for dex in config.get_enabled_dexes(network):
+                        price = await dex_manager.get_price(token_pair, dex, network)
+                        if price:
+                            if 'timestamp' not in price:
+                                price['timestamp'] = time.time()
+                            all_prices.append(price)
+                    return all_prices
+                else:
+                    # Use cached data with filtering
+                    all_prices = await self.get_latest_prices()
+                    
+                    # Filter by token pair
+                    results = [p for p in all_prices if p['token_pair'] == token_pair]
+                    
+                    # Apply additional filters if provided
+                    if dex_name:
+                        results = [p for p in results if p['dex_name'] == dex_name]
+                        
+                    if network:
+                        results = [p for p in results if p['network'] == network]
+                        
+                    return results
+            except Exception as e:
+                logger.error(f"Error getting price for {token_pair}: {str(e)}")
+                return []
+        else:
+            # Use cached data for all prices
+            all_prices = list(self.price_cache.values())
+            return [p for p in all_prices if p['token_pair'] == token_pair]

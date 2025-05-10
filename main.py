@@ -1,12 +1,11 @@
 import os
 import logging
 from api.app import app
-from utils.config import load_config
-from utils.logger import setup_logger
 import asyncio
 import threading
 import models
-from api.app import db
+from api.app import db, init_db
+import config
 
 # Define imports that we'll use lazily to avoid immediate loading
 ai_imports = {
@@ -15,25 +14,27 @@ ai_imports = {
     'PredictionEngine': 'ai.prediction_engine.PredictionEngine',
     'ExecutionEngine': 'core.execution_engine.ExecutionEngine',
     'ReinvestmentModule': 'core.reinvestment.ReinvestmentModule',
-    'NotificationService': 'utils.notification.NotificationService'
+    'NotificationService': 'utils.notification.NotificationService',
+    'AIAgent': 'ai.agent.AIAgent'
 }
 
 # Configure logging
-setup_logger()
 logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)-8s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger.info("Logger initialized with level: %s", logging.getLevelName(logger.level))
 
 def initialize_database():
     """Initialize the database with required tables"""
-    with app.app_context():
-        db.create_all()
-        logger.info("Database initialized successfully")
+    init_db()
+    logger.info("Database initialized successfully")
 
 def start_backend_services():
     """Start all backend services needed for arbitrage"""
     try:
-        # Load configuration
-        config = load_config()
-        
         # Import modules lazily
         try:
             # Import dynamically to avoid immediate loading
@@ -57,47 +58,54 @@ def start_backend_services():
             module_path, class_name = ai_imports['FlashLoanOrchestrator'].rsplit('.', 1)
             FlashLoanOrchestrator = getattr(import_module(module_path), class_name)
             
-            # Initialize services
+            module_path, class_name = ai_imports['AIAgent'].rsplit('.', 1)
+            AIAgent = getattr(import_module(module_path), class_name)
+            
+            # Initialize AI agent
+            ai_agent = AIAgent(api_key=os.environ.get("OPENAI_API_KEY"))
+            
+            # Initialize notification service
             notification_service = NotificationService(
                 telegram_token=os.environ.get("TELEGRAM_BOT_TOKEN"),
                 telegram_chat_id=os.environ.get("TELEGRAM_CHAT_ID"),
                 discord_webhook=os.environ.get("DISCORD_WEBHOOK")
             )
             
-            price_aggregator = PriceAggregator(
-                web3_bsc=config['web3_bsc'],
-                web3_polygon=config['web3_polygon'],
-                dex_list=config['dex_list']
-            )
+            # Initialize price aggregator (using singleton dex_manager)
+            price_aggregator = PriceAggregator()
             
+            # Initialize prediction engine
             prediction_engine = PredictionEngine(
-                model_path=config.get('ai_model_path'),
-                config=config
+                model_path=None,  # Auto-detect the best model
+                config=config.AI_CONFIG
             )
             
+            # Initialize execution engine
             execution_engine = ExecutionEngine(
-                web3_bsc=config['web3_bsc'],
-                web3_polygon=config['web3_polygon'],
-                flash_loan_contracts=config['flash_loan_contracts'],
-                notification_service=notification_service
+                private_key=os.environ.get("TRADING_PRIVATE_KEY"),
+                notification_service=notification_service,
+                use_flashbots=config.TRADING_CONFIG["use_flashbots"]
             )
             
+            # Initialize reinvestment module
             reinvestment_module = ReinvestmentModule(
                 execution_engine=execution_engine,
-                config=config
+                config=config.TRADING_CONFIG
             )
             
+            # Initialize flash loan orchestrator
             flash_loan_orchestrator = FlashLoanOrchestrator(
                 price_aggregator=price_aggregator,
                 prediction_engine=prediction_engine,
                 execution_engine=execution_engine,
                 reinvestment_module=reinvestment_module,
                 notification_service=notification_service,
-                config=config
+                config=config.TRADING_CONFIG
             )
             
             # Start services in separate threads/processes
             asyncio.run(flash_loan_orchestrator.start_monitoring())
+            
         except Exception as e:
             logger.error(f"Error initializing AI components: {str(e)}")
             # Continue without AI components
