@@ -1,0 +1,295 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - ShadowLynx Ultra{% endblock %}
+
+{% block extra_head %}
+<style>
+    .stats-card {
+        transition: all 0.3s ease;
+    }
+    .stats-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+    }
+    .opportunity-row {
+        cursor: pointer;
+    }
+    .opportunity-row:hover {
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+    .profit-positive {
+        color: #00c853;
+    }
+    .profit-negative {
+        color: #ff5252;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card bg-dark">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h4 class="card-title mb-0">
+                        <i data-feather="bar-chart-2" class="me-2"></i>
+                        ShadowLynx Ultra Dashboard
+                    </h4>
+                    <div>
+                        <button class="btn btn-sm btn-outline-primary" id="refresh-btn">
+                            <i data-feather="refresh-cw"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Stats Overview -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-dark stats-card">
+            <div class="card-body">
+                <h5 class="card-title text-muted">Total Profit</h5>
+                <div class="d-flex align-items-center">
+                    <div class="display-6 profit-positive">${{ total_profit|default(0)|round(2) }}</div>
+                    <i data-feather="dollar-sign" class="ms-auto" style="width: 36px; height: 36px;"></i>
+                </div>
+                <p class="card-text">
+                    <small class="text-muted">
+                        {{ profit_summary.total_transactions|default(0) }} trades
+                    </small>
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-dark stats-card">
+            <div class="card-body">
+                <h5 class="card-title text-muted">Success Rate</h5>
+                <div class="d-flex align-items-center">
+                    <div class="display-6">{{ success_rate|default(0)|round(1) }}%</div>
+                    <i data-feather="percent" class="ms-auto" style="width: 36px; height: 36px;"></i>
+                </div>
+                <p class="card-text">
+                    <small class="text-muted">
+                        {{ total_transactions|default(0) }} total transactions
+                    </small>
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-dark stats-card">
+            <div class="card-body">
+                <h5 class="card-title text-muted">24h Profit</h5>
+                <div class="d-flex align-items-center">
+                    {% if profit_summary %}
+                    <div class="display-6 profit-positive">${{ profit_summary.total_profit_usd|default(0)|round(2) }}</div>
+                    {% else %}
+                    <div class="display-6">$0.00</div>
+                    {% endif %}
+                    <i data-feather="clock" class="ms-auto" style="width: 36px; height: 36px;"></i>
+                </div>
+                <p class="card-text">
+                    <small class="text-muted">
+                        Avg: ${{ profit_summary.avg_profit_per_trade|default(0)|round(2) }}/trade
+                    </small>
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-dark stats-card">
+            <div class="card-body">
+                <h5 class="card-title text-muted">System Status</h5>
+                <div class="d-flex align-items-center">
+                    {% set all_online = true %}
+                    {% for service, status in system_status.items() %}
+                        {% if status != 'online' %}
+                            {% set all_online = false %}
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if all_online %}
+                    <div class="display-6 text-success">Healthy</div>
+                    <i data-feather="check-circle" class="ms-auto text-success" style="width: 36px; height: 36px;"></i>
+                    {% else %}
+                    <div class="display-6 text-warning">Degraded</div>
+                    <i data-feather="alert-triangle" class="ms-auto text-warning" style="width: 36px; height: 36px;"></i>
+                    {% endif %}
+                </div>
+                <p class="card-text">
+                    <small class="text-muted">
+                        {{ system_status|length }} services monitored
+                    </small>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <!-- Price Chart -->
+    <div class="col-md-8">
+        <div class="card bg-dark">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i data-feather="trending-up" class="me-2"></i>
+                    Token Price Trends (24h)
+                </h5>
+                <div class="chart-container" style="position: relative; height:300px;">
+                    <canvas id="priceChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Recent Executions -->
+    <div class="col-md-4">
+        <div class="card bg-dark">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i data-feather="zap" class="me-2"></i>
+                    Recent Executions
+                </h5>
+                <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Token</th>
+                                <th>Status</th>
+                                <th>Profit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for execution, opportunity in recent_executions %}
+                            <tr class="opportunity-row" data-bs-toggle="tooltip" title="{{ execution.transaction_hash }}">
+                                <td>{{ opportunity.token_pair }}</td>
+                                <td>
+                                    {% if execution.status == 'success' %}
+                                    <span class="badge bg-success">Success</span>
+                                    {% elif execution.status == 'pending' %}
+                                    <span class="badge bg-warning">Pending</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">Failed</span>
+                                    {% endif %}
+                                </td>
+                                <td class="{% if execution.net_profit_usd > 0 %}profit-positive{% else %}profit-negative{% endif %}">
+                                    ${{ execution.net_profit_usd|round(2) }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            
+                            {% if not recent_executions %}
+                            <tr>
+                                <td colspan="3" class="text-center">No executions yet</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Network Distribution -->
+    <div class="col-md-4">
+        <div class="card bg-dark">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i data-feather="pie-chart" class="me-2"></i>
+                    Network Distribution
+                </h5>
+                <div class="chart-container" style="position: relative; height:250px;">
+                    <canvas id="networkChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- DEX Distribution -->
+    <div class="col-md-4">
+        <div class="card bg-dark">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i data-feather="pie-chart" class="me-2"></i>
+                    DEX Distribution
+                </h5>
+                <div class="chart-container" style="position: relative; height:250px;">
+                    <canvas id="dexChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Recent Opportunities -->
+    <div class="col-md-4">
+        <div class="card bg-dark">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i data-feather="list" class="me-2"></i>
+                    Recent Opportunities
+                </h5>
+                <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Token</th>
+                                <th>Route</th>
+                                <th>Est. Profit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for opp in recent_opportunities %}
+                            <tr class="opportunity-row">
+                                <td>{{ opp.token_pair }}</td>
+                                <td>{{ opp.source_dex[:3] }} → {{ opp.target_dex[:3] }}</td>
+                                <td>${{ opp.estimated_profit_usd|round(2) }}</td>
+                            </tr>
+                            {% endfor %}
+                            
+                            {% if not recent_opportunities %}
+                            <tr>
+                                <td colspan="3" class="text-center">No opportunities found</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-2 text-center">
+                    <a href="/opportunities" class="btn btn-sm btn-outline-primary">View All</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script>
+    // Initialize price data from server
+    const priceData = {{ price_data|safe }};
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize tooltips
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+        
+        // Initialize the dashboard
+        initializeDashboard(priceData);
+        
+        // Refresh button action
+        document.getElementById('refresh-btn').addEventListener('click', function() {
+            window.location.reload();
+        });
+    });
+</script>
+{% endblock %}

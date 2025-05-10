@@ -1,0 +1,240 @@
+{% extends 'base.html' %}
+
+{% block title %}Arbitrage Opportunities - ShadowLynx Ultra{% endblock %}
+
+{% block extra_head %}
+<style>
+    .filter-card {
+        transition: all 0.3s ease;
+    }
+    .badge-ai {
+        background: linear-gradient(135deg, #6e48aa, #9d50bb);
+    }
+    .opp-executed {
+        background-color: rgba(25, 135, 84, 0.1);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card bg-dark">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h4 class="card-title mb-0">
+                        <i data-feather="trending-up" class="me-2"></i>
+                        Arbitrage Opportunities
+                    </h4>
+                    <div>
+                        <a href="/api/export-csv?type=opportunities" class="btn btn-sm btn-outline-secondary">
+                            <i data-feather="download" class="feather-sm"></i> Export CSV
+                        </a>
+                        <button class="btn btn-sm btn-outline-primary ms-2" id="refresh-btn">
+                            <i data-feather="refresh-cw"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card bg-dark filter-card">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i data-feather="filter" class="me-2"></i>
+                    Filter Opportunities
+                </h5>
+                <form method="get" class="row g-3">
+                    <div class="col-md-2">
+                        <label for="network" class="form-label">Network</label>
+                        <select class="form-select" id="network" name="network">
+                            <option value="">All Networks</option>
+                            {% for net in networks %}
+                            <option value="{{ net }}" {% if network == net %}selected{% endif %}>{{ net }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="token_pair" class="form-label">Token Pair</label>
+                        <select class="form-select" id="token_pair" name="token_pair">
+                            <option value="">All Tokens</option>
+                            {% for pair in token_pairs %}
+                            <option value="{{ pair }}" {% if token_pair == pair %}selected{% endif %}>{{ pair }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="source_dex" class="form-label">Source DEX</label>
+                        <select class="form-select" id="source_dex" name="source_dex">
+                            <option value="">All DEXs</option>
+                            {% for dex in dexes %}
+                            <option value="{{ dex }}" {% if source_dex == dex %}selected{% endif %}>{{ dex }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="target_dex" class="form-label">Target DEX</label>
+                        <select class="form-select" id="target_dex" name="target_dex">
+                            <option value="">All DEXs</option>
+                            {% for dex in dexes %}
+                            <option value="{{ dex }}" {% if target_dex == dex %}selected{% endif %}>{{ dex }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="min_profit" class="form-label">Min Profit ($)</label>
+                        <input type="number" class="form-control" id="min_profit" name="min_profit" value="{{ min_profit if min_profit else '' }}" step="0.01">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">Apply Filters</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card bg-dark">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Token Pair</th>
+                                <th>Route</th>
+                                <th>Price Diff (%)</th>
+                                <th>Network</th>
+                                <th>Est. Profit</th>
+                                <th>AI Confidence</th>
+                                <th>Created</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if opportunities %}
+                                {% for opp in opportunities.items %}
+                                <tr class="{% if opp.is_executed %}opp-executed{% endif %}">
+                                    <td>{{ opp.id }}</td>
+                                    <td>{{ opp.token_pair }}</td>
+                                    <td>{{ opp.source_dex }} → {{ opp.target_dex }}</td>
+                                    <td>{{ opp.price_difference_percent|round(2) }}%</td>
+                                    <td>
+                                        <span class="badge {% if opp.network == 'BSC' %}bg-warning{% else %}bg-info{% endif %}">
+                                            {{ opp.network }}
+                                        </span>
+                                    </td>
+                                    <td>${{ opp.estimated_profit_usd|round(2) }}</td>
+                                    <td>
+                                        {% if opp.ai_confidence %}
+                                        <div class="progress" style="height: 20px;" data-bs-toggle="tooltip" title="AI Confidence: {{ (opp.ai_confidence * 100)|round(1) }}%">
+                                            <div class="progress-bar badge-ai" role="progressbar" 
+                                                style="width: {{ (opp.ai_confidence * 100)|round(1) }}%">
+                                                {{ (opp.ai_confidence * 100)|round(0) }}%
+                                            </div>
+                                        </div>
+                                        {% else %}
+                                        <span class="text-muted">N/A</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ opp.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                    <td>
+                                        {% if opp.is_executed %}
+                                        <span class="badge bg-success">Executed</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">Identified</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="9" class="text-center">No opportunities found matching the criteria</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                {% if opportunities and opportunities.pages > 1 %}
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <div>
+                        Showing {{ opportunities.items|length }} of {{ opportunities.total }} opportunities
+                    </div>
+                    <nav aria-label="Page navigation">
+                        <ul class="pagination">
+                            {% if opportunities.has_prev %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('opportunities', page=opportunities.prev_num, network=network, token_pair=token_pair, source_dex=source_dex, target_dex=target_dex, min_profit=min_profit) }}">
+                                    Previous
+                                </a>
+                            </li>
+                            {% else %}
+                            <li class="page-item disabled">
+                                <a class="page-link" href="#">Previous</a>
+                            </li>
+                            {% endif %}
+                            
+                            {% for page_num in opportunities.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                                {% if page_num %}
+                                    {% if page_num == opportunities.page %}
+                                    <li class="page-item active">
+                                        <a class="page-link" href="#">{{ page_num }}</a>
+                                    </li>
+                                    {% else %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ url_for('opportunities', page=page_num, network=network, token_pair=token_pair, source_dex=source_dex, target_dex=target_dex, min_profit=min_profit) }}">
+                                            {{ page_num }}
+                                        </a>
+                                    </li>
+                                    {% endif %}
+                                {% else %}
+                                <li class="page-item disabled">
+                                    <a class="page-link" href="#">...</a>
+                                </li>
+                                {% endif %}
+                            {% endfor %}
+                            
+                            {% if opportunities.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('opportunities', page=opportunities.next_num, network=network, token_pair=token_pair, source_dex=source_dex, target_dex=target_dex, min_profit=min_profit) }}">
+                                    Next
+                                </a>
+                            </li>
+                            {% else %}
+                            <li class="page-item disabled">
+                                <a class="page-link" href="#">Next</a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize tooltips
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+        
+        // Refresh button action
+        document.getElementById('refresh-btn').addEventListener('click', function() {
+            window.location.reload();
+        });
+    });
+</script>
+{% endblock %}
