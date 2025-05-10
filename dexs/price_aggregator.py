@@ -8,6 +8,8 @@ import json
 from web3 import Web3
 from models import TokenPrice, db
 from datetime import datetime
+import config
+from dexs.dex_manager import dex_manager
 
 logger = logging.getLogger(__name__)
 
@@ -17,24 +19,12 @@ class PriceAggregator:
     on BSC and Polygon networks
     """
     
-    def __init__(self, web3_bsc, web3_polygon, dex_list):
+    def __init__(self):
         """
         Initialize the PriceAggregator
-        
-        Args:
-            web3_bsc: Web3 instance for BSC
-            web3_polygon: Web3 instance for Polygon
-            dex_list: List of DEXs to monitor
         """
-        self.web3_bsc = web3_bsc
-        self.web3_polygon = web3_polygon
-        self.dex_list = dex_list
-        
-        # Initialize token list
-        self.token_list = json.loads(os.environ.get("MONITORED_TOKENS", "[]"))
-        
-        # Initialize DEX interface mapping
-        self.initialize_dex_interfaces()
+        # Initialize token list from config
+        self.token_list = config.TRADING_CONFIG.get("token_pairs", [])
         
         # Cached price data
         self.price_cache = {}
@@ -47,28 +37,6 @@ class PriceAggregator:
         # Rate limiting settings
         self.rate_limits = {}
         
-    def initialize_dex_interfaces(self):
-        """Initialize DEX interface handlers"""
-        # Import dex interfaces dynamically
-        from dexs.dex_interfaces import create_dex_interface
-        
-        self.dex_interfaces = {}
-        for dex_name in self.dex_list:
-            try:
-                # Create interface for BSC
-                self.dex_interfaces[f"{dex_name}_BSC"] = create_dex_interface(
-                    dex_name, 'BSC', self.web3_bsc
-                )
-                
-                # Create interface for Polygon
-                self.dex_interfaces[f"{dex_name}_POLYGON"] = create_dex_interface(
-                    dex_name, 'POLYGON', self.web3_polygon
-                )
-                
-                logger.info(f"Initialized interface for {dex_name} on BSC and Polygon")
-            except Exception as e:
-                logger.error(f"Failed to initialize interface for {dex_name}: {str(e)}")
-                
     async def start(self):
         """Start the price aggregation process"""
         logger.info("Starting price aggregation service")
@@ -90,13 +58,15 @@ class PriceAggregator:
             
         self.last_update = current_time
         
+        # Get available DEXs from the DEX manager
+        available_dexs = dex_manager.get_available_dexs()
+        
         # Create tasks for all price fetching operations
         tasks = []
-        for dex_key, interface in self.dex_interfaces.items():
-            dex_name, network = dex_key.split('_')
-            
-            for token_pair in self.token_list:
-                tasks.append(self.get_price_with_retry(dex_name, network, token_pair))
+        for network, dex_names in available_dexs.items():
+            for dex_name in dex_names:
+                for token_pair in self.token_list:
+                    tasks.append(self.get_price_with_retry(dex_name, network, token_pair))
                 
         # Execute all tasks concurrently
         try:
@@ -145,25 +115,17 @@ class PriceAggregator:
         async with self.api_semaphore:
             for attempt in range(max_retries):
                 try:
-                    # Get DEX interface
-                    interface_key = f"{dex_name}_{network}"
-                    interface = self.dex_interfaces.get(interface_key)
-                    
-                    if not interface:
-                        logger.warning(f"No interface found for {interface_key}")
-                        return None
-                        
-                    # Update rate limit tracking
-                    self.rate_limits[rate_limit_key] = (time.time(), interface.min_api_interval)
-                    
-                    # Get price from interface
-                    price_data = await interface.get_price(token_pair)
+                    # Use the DEX manager to get prices
+                    price_data = await dex_manager.get_price(token_pair, dex_name, network)
                     
                     if price_data:
-                        # Add additional information
-                        price_data['dex_name'] = dex_name
-                        price_data['network'] = network
-                        price_data['timestamp'] = time.time()
+                        # Add additional information if not already present
+                        if 'dex_name' not in price_data:
+                            price_data['dex_name'] = dex_name
+                        if 'network' not in price_data:
+                            price_data['network'] = network
+                        if 'timestamp' not in price_data:
+                            price_data['timestamp'] = time.time()
                         return price_data
                         
                 except Exception as e:
