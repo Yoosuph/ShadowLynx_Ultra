@@ -90,7 +90,7 @@ DEFAULT_TOKEN_ADDRESSES = {
     "WBNB_BSC": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
     
     "ETH_POLYGON": "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
-    "USDT_POLYGON": "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+    "USDT_POLYGON": "0xc2132D31c914a87C6611C10748AEb04B58e8F",
     "USDC_POLYGON": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
     "WMATIC_POLYGON": "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270"
 }
@@ -128,6 +128,34 @@ TRADING_CONFIG = {
         "WBNB-BUSD",
         "WMATIC-USDC"
     ]
+}
+
+# Gateway configuration
+GATEWAY_CONFIG = {
+    "enabled": os.environ.get("USE_GATEWAY", "false").lower() == "true",
+    "url": os.environ.get("GATEWAY_URL", "http://localhost:15888"),
+    "passphrase": os.environ.get("GATEWAY_PASSPHRASE", ""),
+    "dev_mode": os.environ.get("GATEWAY_DEV_MODE", "true").lower() == "true",
+    "use_proxy": os.environ.get("GATEWAY_USE_PROXY", "false").lower() == "true",
+    "proxy_path": os.environ.get("GATEWAY_PROXY_PATH", "/gateway"),
+    "chains": {
+        "BSC": {
+            "enabled": True,
+            "chain_name": "ethereum",  # BSC uses Ethereum chain type in Gateway
+            "connectors": ["uniswap"]  # PancakeSwap uses Uniswap connector in Gateway
+        },
+        "POLYGON": {
+            "enabled": True,
+            "chain_name": "ethereum",  # Polygon uses Ethereum chain type in Gateway
+            "connectors": ["uniswap"]  # QuickSwap, SushiSwap use Uniswap connector
+        },
+        "SOLANA": {
+            "enabled": False,  # Disabled by default, enable when needed
+            "chain_name": "solana",
+            "connectors": ["jupiter", "raydium", "meteora"]
+        }
+    },
+    "fallback_on_error": True  # Use direct DEX connection if Gateway fails
 }
 
 # Get token addresses from environment or use defaults

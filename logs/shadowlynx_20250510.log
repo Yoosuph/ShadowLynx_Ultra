@@ -1,0 +1,120 @@
+2025-05-10 14:45:16,069 | INFO     | root:60 | Logger initialized with level: INFO
+2025-05-10 14:45:17,021 | ERROR    | api.routes:78 | Error in dashboard route: (psycopg2.errors.UndefinedTable) relation "system_status" does not exist
+LINE 2: FROM system_status
+             ^
+
+[SQL: SELECT system_status.id AS system_status_id, system_status.service_name AS system_status_service_name, system_status.status AS system_status_status, system_status.last_check AS system_status_last_check, system_status.uptime_seconds AS system_status_uptime_seconds, system_status.response_time_ms AS system_status_response_time_ms, system_status.error_count AS system_status_error_count, system_status.details AS system_status_details 
+FROM system_status]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+2025-05-10 14:45:17,045 | ERROR    | api.app:875 | Exception on / [GET]
+Traceback (most recent call last):
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1964, in _exec_single_context
+    self.dialect.do_execute(
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 945, in do_execute
+    cursor.execute(statement, parameters)
+psycopg2.errors.UndefinedTable: relation "system_status" does not exist
+LINE 2: FROM system_status
+             ^
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/runner/workspace/api/routes.py", line 19, in dashboard
+    status_records = SystemStatus.query.all()
+                     ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/orm/query.py", line 2704, in all
+    return self._iter().all()  # type: ignore
+           ^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/orm/query.py", line 2858, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+                                                  ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2365, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2251, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1416, in execute
+    return meth(
+           ^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/sql/elements.py", line 523, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1638, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1843, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1983, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2352, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1964, in _exec_single_context
+    self.dialect.do_execute(
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 945, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.ProgrammingError: (psycopg2.errors.UndefinedTable) relation "system_status" does not exist
+LINE 2: FROM system_status
+             ^
+
+[SQL: SELECT system_status.id AS system_status_id, system_status.service_name AS system_status_service_name, system_status.status AS system_status_status, system_status.last_check AS system_status_last_check, system_status.uptime_seconds AS system_status_uptime_seconds, system_status.response_time_ms AS system_status_response_time_ms, system_status.error_count AS system_status_error_count, system_status.details AS system_status_details 
+FROM system_status]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/api/routes.py", line 79, in dashboard
+    return render_template('dashboard.html',
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/templating.py", line 150, in render_template
+    return _render(app, template, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask/templating.py", line 131, in _render
+    rv = template.render(context)
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/jinja2/environment.py", line 1295, in render
+    self.environment.handle_exception()
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/jinja2/environment.py", line 942, in handle_exception
+    raise rewrite_traceback_stack(source=source)
+  File "/home/runner/workspace/api/templates/dashboard.html", line 1, in top-level template code
+    {% extends 'base.html' %}
+  File "/home/runner/workspace/api/templates/base.html", line 59, in top-level template code
+    {% block content %}{% endblock %}
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/api/templates/dashboard.html", line 62, in block 'content'
+    {{ profit_summary.total_transactions|default(0) }} trades
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/jinja2/environment.py", line 490, in getattr
+    return getattr(obj, attribute)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+jinja2.exceptions.UndefinedError: 'profit_summary' is undefined
+2025-05-10 14:47:37,085 | INFO     | root:60 | Logger initialized with level: INFO
+2025-05-10 14:47:49,744 | INFO     | root:60 | Logger initialized with level: INFO
+2025-05-10 14:52:52,781 | INFO     | utils.config:49 | Connected to BSC: True
+2025-05-10 14:52:53,137 | INFO     | utils.config:56 | Connected to Polygon: True
+2025-05-10 15:13:06,026 | INFO     | root:60 | Logger initialized with level: INFO
+2025-05-10 15:42:21,778 | INFO     | root:60 | Logger initialized with level: INFO
+2025-05-10 16:19:21,690 | INFO     | root:60 | Logger initialized with level: INFO
+2025-05-10 16:57:48,972 | INFO     | root:60 | Logger initialized with level: INFO
+2025-05-10 17:02:01,943 | INFO     | root:60 | Logger initialized with level: INFO
+2025-05-10 17:02:08,162 | INFO     | root:60 | Logger initialized with level: INFO
+2025-05-10 17:14:00,637 | INFO     | root:60 | Logger initialized with level: INFO
+2025-05-10 17:17:27,577 | INFO     | root:60 | Logger initialized with level: INFO

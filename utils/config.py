@@ -1,4 +1,4 @@
-import os
+}import os
 import json
 import logging
 from typing import Dict, Any
@@ -78,3 +78,15 @@ def load_config() -> Dict[str, Any]:
         config['ai_model_path'] = ai_model_path
         
     return config
+    
+# Gateway configuration
+GATEWAY_CONFIG = {
+    "enabled": os.environ.get("USE_GATEWAY", "false").lower() == "true",
+    "url": os.environ.get("GATEWAY_URL", "http://localhost:15888"),
+    "passphrase": os.environ.get("GATEWAY_PASSPHRASE", ""),
+    "dev_mode": os.environ.get("GATEWAY_DEV_MODE", "true").lower() == "true",
+    "use_proxy": os.environ.get("GATEWAY_USE_PROXY", "false").lower() == "true",
+    "proxy_path": os.environ.get("GATEWAY_PROXY_PATH", "/gateway"),
+    "chains": {
+        # ... existing chains configuration
+    }

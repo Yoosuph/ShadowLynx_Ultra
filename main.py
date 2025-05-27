@@ -15,7 +15,8 @@ ai_imports = {
     'ExecutionEngine': 'core.execution_engine.ExecutionEngine',
     'ReinvestmentModule': 'core.reinvestment.ReinvestmentModule',
     'NotificationService': 'utils.notification.NotificationService',
-    'AIAgent': 'ai.agent.AIAgent'
+    'AIAgent': 'ai.agent.AIAgent',
+    'GatewayAdapter': 'utils.gateway_adapter.GatewayAdapter'
 }
 
 # Configure logging
@@ -32,7 +33,45 @@ def initialize_database():
     init_db()
     logger.info("Database initialized successfully")
 
-def start_backend_services():
+async def start_gateway_service():
+    """Initialize and start the Gateway service if enabled"""
+    if config.GATEWAY_CONFIG.get("enabled", False):
+        try:
+            # Import GatewayAdapter dynamically
+            from importlib import import_module
+            module_path, class_name = ai_imports['GatewayAdapter'].rsplit('.', 1)
+            GatewayAdapter = getattr(import_module(module_path), class_name)
+            
+            # Initialize Gateway adapter with proxy settings if enabled
+            use_proxy = config.GATEWAY_CONFIG.get("use_proxy", False)
+            proxy_path = config.GATEWAY_CONFIG.get("proxy_path", "/gateway") if use_proxy else ""
+            
+            gateway = GatewayAdapter(
+                base_url=config.GATEWAY_CONFIG.get("url"),
+                use_proxy=use_proxy,
+                proxy_path=proxy_path
+            )
+            
+            # Connect to Gateway
+            await gateway.connect()
+            
+            # Check Gateway status
+            status = await gateway.get_status()
+            if status.get("status") == "ok":
+                logger.info(f"Successfully connected to Gateway at {gateway.base_url}{proxy_path}")
+                return gateway
+            else:
+                logger.warning(f"Gateway connection issue: {status.get('message', 'Unknown error')}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Failed to start Gateway service: {str(e)}")
+            return None
+    else:
+        logger.info("Gateway integration is disabled in configuration")
+        return None
+
+async def start_backend_services():
     """Start all backend services needed for arbitrage"""
     try:
         # Import modules lazily
@@ -61,6 +100,9 @@ def start_backend_services():
             module_path, class_name = ai_imports['AIAgent'].rsplit('.', 1)
             AIAgent = getattr(import_module(module_path), class_name)
             
+            # Initialize Gateway service
+            gateway = await start_gateway_service()
+            
             # Initialize AI agent
             ai_agent = AIAgent(api_key=os.environ.get("OPENAI_API_KEY"))
             
@@ -80,12 +122,15 @@ def start_backend_services():
                 config=config.AI_CONFIG
             )
             
-            # Initialize execution engine
+            # Initialize execution engine with Gateway support
             execution_engine = ExecutionEngine(
-                private_key=os.environ.get("TRADING_PRIVATE_KEY"),
+                private_key=os.environ.get("WALLET_PRIVATE_KEY"),
                 notification_service=notification_service,
                 use_flashbots=config.TRADING_CONFIG["use_flashbots"]
             )
+            
+            # Initialize execution engine's async components
+            await execution_engine.initialize()
             
             # Initialize reinvestment module
             reinvestment_module = ReinvestmentModule(
@@ -104,7 +149,7 @@ def start_backend_services():
             )
             
             # Start services in separate threads/processes
-            asyncio.run(flash_loan_orchestrator.start_monitoring())
+            await flash_loan_orchestrator.start_monitoring()
             
         except Exception as e:
             logger.error(f"Error initializing AI components: {str(e)}")
@@ -128,7 +173,17 @@ if __name__ == "__main__":
         initialize_database()
         
         # Start backend in a separate thread
-        backend_thread = threading.Thread(target=start_backend_services)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Create a task for the backend services
+        backend_task = loop.create_task(start_backend_services())
+        
+        # Run the event loop in a separate thread
+        def run_async_loop():
+            loop.run_forever()
+            
+        backend_thread = threading.Thread(target=run_async_loop)
         backend_thread.daemon = True
         backend_thread.start()
         

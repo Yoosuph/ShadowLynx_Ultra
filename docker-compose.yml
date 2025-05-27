@@ -1,0 +1,164 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    restart: always
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+      - gateway
+    networks:
+      - blockchain_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  db:
+    image: postgres:13
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_NAME:-blockchaindb}
+    ports:
+      - "5432:5432"
+    networks:
+      - blockchain_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:6-alpine
+    restart: always
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - blockchain_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  gateway:
+    image: hummingbot/gateway:latest
+    restart: always
+    ports:
+      - "15888:15888"
+    volumes:
+      - ./gateway/conf:/usr/src/app/conf
+      - ./gateway/certs:/usr/src/app/certs
+    env_file:
+      - .env
+    networks:
+      - blockchain_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:15888/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/ssl:/etc/nginx/ssl
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - app
+      - gateway
+    networks:
+      - blockchain_network
+
+  prometheus:
+    image: prom/prometheus:v2.30.3
+    restart: always
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - blockchain_network
+
+  grafana:
+    image: grafana/grafana:8.2.2
+    restart: always
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - blockchain_network
+
+  worker:
+    build: .
+    restart: always
+    command: ["celery", "-A", "tasks", "worker", "--loglevel=info"]
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - db
+    networks:
+      - blockchain_network
+
+  beat:
+    build: .
+    restart: always
+    command: ["celery", "-A", "tasks", "beat", "--loglevel=info"]
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - db
+    networks:
+      - blockchain_network
+
+networks:
+  blockchain_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
